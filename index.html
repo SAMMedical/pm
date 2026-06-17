@@ -1,3 +1,471 @@
-ID	CUSTOMER	KATEGORI	MERK	SISTEM	MULAI	AKHIR	DURASI
-123	ARICANTI	HEMATOLOGI	MITIC	KSO	2022	2023	1 TAHUN
-456	KSIH IBU	HEMATOLOGI	MITIC	KSO	2022	2023	2 TAHUN
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Panda 🐼</title>
+    
+    <!-- Mempercepat koneksi DNS ke server Google Script -->
+    <link rel="preconnect" href="https://script.google.com">
+
+    <style>
+        /* Mengatur body dan html agar tidak ada margin/padding bawaan browser */
+        html, body {
+            margin: 0;
+            padding: 0;
+            width: 100%;
+            height: 100%;
+            overflow: hidden; /* Mencegah munculnya scrollbar ganda dari body */
+            background: linear-gradient(135deg, #0f2027, #203a43, #2c5364); /* Background modern gelap */
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            display: flex; /* Untuk menempatkan captcha di tengah */
+            justify-content: center;
+            align-items: center;
+            transition: background 0.5s;
+        }
+
+        /* Canvas untuk background animasi */
+        #bg-canvas {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: 0;
+            pointer-events: none; /* Agar tidak menghalangi klik ke elemen UI */
+        }
+
+        /* Mode setelah berhasil verifikasi */
+        body.verified {
+            display: block; /* Menghilangkan flex agar iframe normal penuh */
+            background-color: #ffffff;
+        }
+        
+        body.verified #bg-canvas {
+            display: none; /* Sembunyikan animasi angka saat iframe dimuat */
+        }
+
+        /* --- STYLING UNTUK KOTAK CAPTCHA (Efek Glassmorphism) --- */
+        #captcha-container {
+            position: relative;
+            z-index: 1;
+            background: rgba(255, 255, 255, 0.95);
+            backdrop-filter: blur(10px);
+            padding: 40px 30px;
+            border-radius: 16px;
+            box-shadow: 0 15px 35px rgba(0, 0, 0, 0.5);
+            text-align: center;
+            width: 90%;
+            max-width: 400px;
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            animation: fadeIn 0.8s ease-out;
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(20px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        #captcha-container h2 {
+            margin: 0 0 10px 0;
+            color: #1e293b;
+            font-size: 24px;
+            font-weight: 700;
+        }
+
+        #captcha-container p {
+            color: #64748b;
+            margin-bottom: 25px;
+            font-size: 14px;
+            line-height: 1.5;
+        }
+
+        #captcha-question {
+            font-size: 32px;
+            font-weight: 800;
+            color: #0f172a;
+            background: linear-gradient(135deg, #f1f5f9, #e2e8f0);
+            padding: 20px;
+            border-radius: 12px;
+            letter-spacing: 3px;
+            margin-bottom: 25px;
+            box-shadow: inset 0 2px 4px rgba(0,0,0,0.06);
+        }
+
+        #captcha-input {
+            width: 100%;
+            padding: 15px;
+            font-size: 18px;
+            border: 2px solid #cbd5e1;
+            border-radius: 10px;
+            box-sizing: border-box;
+            text-align: center;
+            margin-bottom: 20px;
+            outline: none;
+            transition: all 0.3s ease;
+            background: #ffffff;
+            color: #334155;
+            font-weight: 600;
+        }
+
+        #captcha-input:focus {
+            border-color: #3b82f6;
+            box-shadow: 0 0 0 4px rgba(59, 130, 246, 0.15);
+        }
+
+        #verify-btn {
+            width: 100%;
+            padding: 15px;
+            font-size: 16px;
+            background: linear-gradient(135deg, #3b82f6, #2563eb);
+            color: white;
+            border: none;
+            border-radius: 10px;
+            cursor: pointer;
+            font-weight: 700;
+            letter-spacing: 1px;
+            transition: all 0.3s ease;
+            box-shadow: 0 4px 12px rgba(37, 99, 235, 0.3);
+        }
+
+        #verify-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 16px rgba(37, 99, 235, 0.4);
+            background: linear-gradient(135deg, #2563eb, #1d4ed8);
+        }
+
+        #error-msg {
+            color: #ef4444;
+            margin-top: 15px;
+            font-size: 14px;
+            display: none;
+            font-weight: 600;
+        }
+
+        /* Animasi bergetar saat jawaban salah */
+        .shake-animation {
+            animation: shake 0.4s ease-in-out;
+        }
+
+        @keyframes shake {
+            0%, 100% { transform: translateX(0); }
+            25% { transform: translateX(-5px); }
+            50% { transform: translateX(5px); }
+            75% { transform: translateX(-5px); }
+        }
+
+        /* --- STYLING UNTUK PESAN DIBLOKIR --- */
+        #lockout-msg {
+            display: none;
+            background: rgba(239, 68, 68, 0.1);
+            border: 1px solid rgba(239, 68, 68, 0.3);
+            padding: 20px;
+            border-radius: 12px;
+            margin-top: 15px;
+            animation: fadeIn 0.5s ease-out;
+        }
+        #lockout-msg h3 {
+            color: #ef4444;
+            margin: 0 0 10px 0;
+            font-size: 18px;
+        }
+        #lockout-timer {
+            font-size: 28px;
+            font-weight: 800;
+            color: #b91c1c;
+            letter-spacing: 2px;
+            font-family: monospace;
+        }
+
+        /* --- STYLING UNTUK IFRAME --- */
+        /* Iframe awalnya disembunyikan */
+        #main-iframe {
+            display: none; 
+            width: 100vw;
+            height: 100vh;
+            border: none;
+        }
+    </style>
+</head>
+
+<body>
+
+    <!-- Canvas untuk Animasi Angka -->
+    <canvas id="bg-canvas"></canvas>
+
+    <!-- Kontainer Verifikasi Captcha -->
+    <div id="captcha-container">
+        <h2>Verifikasi Keamanan 🔒</h2>
+        <p>Selesaikan soal di bawah ini untuk membuktikan Anda adalah manusia.</p>
+        
+        <div id="captcha-question">...</div>
+        
+        <input type="number" id="captcha-input" placeholder="Masukkan jawaban Anda" autocomplete="off">
+        <button id="verify-btn">Verifikasi Akses</button>
+        
+        <div id="error-msg">Jawaban salah! Silakan coba lagi.</div>
+
+        <!-- Pesan Blokir -->
+        <div id="lockout-msg">
+            <h3>Akses Diblokir 🚫</h3>
+            <p>Terlalu banyak percobaan salah. Coba lagi dalam:</p>
+            <div id="lockout-timer">10:00</div>
+        </div>
+    </div>
+
+    <!-- Iframe utama (URL tidak diatur di awal untuk mencegah pemuatan data di belakang layar) -->
+    <iframe id="main-iframe" title="Password Manager" loading="lazy"></iframe>
+
+    <script>
+        let expectedAnswer = 0;
+        let isVerified = false;
+
+        // --- KONFIGURASI LIMIT AKSES ---
+        const MAX_ATTEMPTS = 3;
+        const LOCKOUT_MINUTES = 10;
+        let lockoutInterval;
+
+        // Fungsi Helper Cookies (Agar status blokir tidak hilang saat di-refresh)
+        function getCookie(name) {
+            const match = document.cookie.match(new RegExp('(^| )' + name + '=([^;]+)'));
+            if (match) return match[2];
+            return null;
+        }
+
+        function setCookie(name, value, minutes) {
+            const date = new Date();
+            date.setTime(date.getTime() + (minutes * 60 * 1000));
+            document.cookie = `${name}=${value}; expires=${date.toUTCString()}; path=/`;
+        }
+
+        function deleteCookie(name) {
+            document.cookie = `${name}=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;`;
+        }
+
+        // Cek status blokir saat halaman baru dimuat
+        function checkLockout() {
+            const blockedUntil = getCookie('panda_blocked_until');
+            if (blockedUntil) {
+                const endTime = parseInt(blockedUntil, 10);
+                if (Date.now() < endTime) {
+                    activateLockoutMode(endTime);
+                    return true;
+                } else {
+                    // Waktu blokir sudah habis
+                    deleteCookie('panda_blocked_until');
+                    deleteCookie('panda_attempts');
+                }
+            }
+            return false;
+        }
+
+        // Aktifkan mode blokir (Sembunyikan form, tampilkan timer)
+        function activateLockoutMode(endTime) {
+            document.getElementById('captcha-question').style.display = 'none';
+            document.getElementById('captcha-input').style.display = 'none';
+            document.getElementById('verify-btn').style.display = 'none';
+            document.getElementById('error-msg').style.display = 'none';
+            
+            const lockoutMsg = document.getElementById('lockout-msg');
+            lockoutMsg.style.display = 'block';
+
+            updateLockoutTimer(endTime);
+            clearInterval(lockoutInterval);
+            lockoutInterval = setInterval(() => {
+                updateLockoutTimer(endTime);
+            }, 1000);
+        }
+
+        // Update teks countdown timer
+        function updateLockoutTimer(endTime) {
+            const now = Date.now();
+            const timeLeft = endTime - now;
+
+            if (timeLeft <= 0) {
+                clearInterval(lockoutInterval);
+                deleteCookie('panda_blocked_until');
+                deleteCookie('panda_attempts');
+                
+                // Kembalikan UI seperti semula jika waktu habis
+                document.getElementById('captcha-question').style.display = 'block';
+                document.getElementById('captcha-input').style.display = 'block';
+                document.getElementById('verify-btn').style.display = 'block';
+                document.getElementById('lockout-msg').style.display = 'none';
+                
+                generateCaptcha();
+            } else {
+                const minutes = Math.floor(timeLeft / (1000 * 60));
+                const seconds = Math.floor((timeLeft % (1000 * 60)) / 1000);
+                document.getElementById('lockout-timer').innerText = 
+                    `${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
+            }
+        }
+
+        // --- ANIMASI LATAR BELAKANG (ANGKA BERGERAK) ---
+        const canvas = document.getElementById('bg-canvas');
+        const ctx = canvas.getContext('2d');
+        let particlesArray = [];
+
+        function initCanvas() {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+            particlesArray = [];
+            // Menentukan kepadatan partikel (semakin kecil pembagi, semakin banyak angka)
+            const numberOfParticles = Math.floor((canvas.width * canvas.height) / 8000); 
+
+            for (let i = 0; i < numberOfParticles; i++) {
+                const x = Math.random() * canvas.width;
+                const y = Math.random() * canvas.height;
+                const size = Math.random() * 20 + 10; // Ukuran font antara 10 - 30px
+                const speedX = (Math.random() * 1) - 0.5; // Kecepatan horizontal
+                const speedY = (Math.random() * 1) - 0.5; // Kecepatan vertikal
+                const number = Math.floor(Math.random() * 10); // Angka acak 0-9
+                const opacity = Math.random() * 0.2 + 0.05; // Transparansi halus
+                particlesArray.push({ x, y, size, speedX, speedY, number, opacity });
+            }
+        }
+
+        function animateCanvas() {
+            if (isVerified) return; // Hentikan kalkulasi animasi jika pengguna sudah terverifikasi (hemat baterai/CPU)
+            
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            
+            for (let i = 0; i < particlesArray.length; i++) {
+                let p = particlesArray[i];
+                
+                // Render teks/angka ke layar
+                ctx.fillStyle = `rgba(255, 255, 255, ${p.opacity})`;
+                ctx.font = `bold ${p.size}px 'Segoe UI', Arial, sans-serif`;
+                ctx.fillText(p.number, p.x, p.y);
+                
+                // Update posisi untuk frame berikutnya
+                p.x += p.speedX;
+                p.y += p.speedY;
+                
+                // Pantulkan angka jika menyentuh batas layar
+                if (p.x < 0 || p.x > canvas.width) p.speedX *= -1;
+                if (p.y < 0 || p.y > canvas.height) p.speedY *= -1;
+                
+                // Ubah angka secara acak kadang-kadang untuk efek teknologis (matrix-style)
+                if (Math.random() < 0.01) p.number = Math.floor(Math.random() * 10);
+            }
+            requestAnimationFrame(animateCanvas);
+        }
+
+        // Jalankan ulang kalkulasi canvas jika orientasi layar HP diubah
+        window.addEventListener('resize', () => {
+            if (!isVerified) initCanvas();
+        });
+
+
+        // --- LOGIKA CAPTCHA MATEMATIKA ---
+        function generateCaptcha() {
+            // Menghasilkan angka acak dari 1 sampai 10
+            let num1 = Math.floor(Math.random() * 10) + 1;
+            let num2 = Math.floor(Math.random() * 10) + 1;
+            
+            // Pilihan operator acak
+            const operators = ['+', '-', 'x'];
+            const operator = operators[Math.floor(Math.random() * operators.length)];
+
+            // Jika pengurangan, pastikan angka pertama lebih besar (mencegah hasil minus)
+            if (operator === '-' && num1 < num2) {
+                let temp = num1;
+                num1 = num2;
+                num2 = temp;
+            }
+
+            // Menghitung jawaban yang benar
+            switch(operator) {
+                case '+': expectedAnswer = num1 + num2; break;
+                case '-': expectedAnswer = num1 - num2; break;
+                case 'x': expectedAnswer = num1 * num2; break;
+            }
+
+            document.getElementById('captcha-question').innerText = `${num1} ${operator} ${num2} = ?`;
+            document.getElementById('captcha-input').value = '';
+            
+            // Fokus otomatis ke input (diberi jeda agar animasi CSS selesai dulu)
+            setTimeout(() => {
+                document.getElementById('captcha-input').focus();
+            }, 100);
+        }
+
+        function verifyCaptcha() {
+            const userInput = document.getElementById('captcha-input').value;
+            const errorMsg = document.getElementById('error-msg');
+            const container = document.getElementById('captcha-container');
+
+            if (userInput === '') {
+                errorMsg.innerText = "Jawaban tidak boleh kosong!";
+                errorMsg.style.display = 'block';
+                triggerShake(container);
+                return;
+            }
+
+            if (parseInt(userInput, 10) === expectedAnswer) {
+                // Berhasil verifikasi: Hapus history kegagalan
+                deleteCookie('panda_attempts');
+                
+                isVerified = true;
+                container.style.display = 'none';
+                errorMsg.style.display = 'none';
+                
+                // Ubah background & bersihkan layar
+                document.body.classList.add('verified');
+
+                // Tampilkan iframe dan mulai muat halaman Google Script Anda
+                const iframe = document.getElementById('main-iframe');
+                iframe.style.display = 'block';
+                iframe.src = "https://script.google.com/macros/s/AKfycbwGtIduYFjEdk3aIcCyr5huKRv9IZx3wxKMTbN_Ts9-5L5D76T4UO1IHlIgENEL9nEljQ/exec";
+            } else {
+                // Gagal: Logika Limit Akses
+                let attempts = parseInt(getCookie('panda_attempts') || '0', 10);
+                attempts++;
+                setCookie('panda_attempts', attempts, LOCKOUT_MINUTES); // Simpan percobaan
+
+                if (attempts >= MAX_ATTEMPTS) {
+                    // Jika batas tercapai, blokir selama 10 menit
+                    const endTime = Date.now() + (LOCKOUT_MINUTES * 60 * 1000);
+                    setCookie('panda_blocked_until', endTime, LOCKOUT_MINUTES);
+                    activateLockoutMode(endTime);
+                } else {
+                    // Jawaban salah tapi batas belum tercapai: Tampilkan sisa percobaan
+                    const sisa = MAX_ATTEMPTS - attempts;
+                    errorMsg.innerText = `Jawaban salah! Sisa percobaan: ${sisa}`;
+                    errorMsg.style.display = 'block';
+                    triggerShake(container);
+                    generateCaptcha();
+                }
+            }
+        }
+
+        // Fungsi pembantu untuk memutar ulang animasi bergetar (shake)
+        function triggerShake(element) {
+            element.classList.remove('shake-animation');
+            void element.offsetWidth; // Memaksa reflow browser agar animasi bisa diputar ulang
+            element.classList.add('shake-animation');
+        }
+
+        // --- INISIALISASI SAAT HALAMAN DIMUAT ---
+        window.onload = () => {
+            initCanvas();
+            animateCanvas();
+            // Cek status blokir dulu, jika aman baru buat soal matematika
+            if (!checkLockout()) {
+                generateCaptcha();
+            }
+        };
+
+        // Event listener klik tombol verifikasi
+        document.getElementById('verify-btn').addEventListener('click', verifyCaptcha);
+
+        // Memungkinkan menekan tombol "Enter" pada keyboard
+        document.getElementById('captcha-input').addEventListener('keypress', function(e) {
+            if (e.key === 'Enter') {
+                verifyCaptcha();
+            }
+        });
+    </script>
+</body>
+</html>
