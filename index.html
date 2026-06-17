@@ -15,6 +15,7 @@
             padding: 0;
             width: 100%;
             height: 100%;
+            height: 100dvh; /* Perbaikan Mobile: Menggunakan Dynamic Viewport Height */
             overflow: hidden; /* Mencegah munculnya scrollbar ganda dari body */
             background: linear-gradient(135deg, #0f2027, #203a43, #2c5364); /* Background modern gelap */
             font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
@@ -181,9 +182,13 @@
         /* Iframe awalnya disembunyikan */
         #main-iframe {
             display: none; 
-            width: 100vw;
-            height: 100vh;
+            width: 100%;
+            height: 100%;
+            height: 100dvh; /* Perbaikan Mobile: mencegah footer terpotong oleh address bar */
             border: none;
+            position: absolute; /* Memastikan posisi absolut dan pas layar penuh */
+            top: 0;
+            left: 0;
         }
     </style>
 </head>
